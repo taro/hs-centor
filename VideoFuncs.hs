@@ -3,6 +3,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (liftM)
 import Text.Regex.Posix ((=~))
 import System.Directory (renameFile)
+import System.Directory.WithCwd (withCwd)
 import System.IO (hClose, hGetContents)
 import System.Process (runProcess, waitForProcess)
 import System.Process.Run (readProcess)
@@ -44,5 +45,5 @@ takeScreenshots vidPath outDir (offset : rest) = do
 	let cmd = "mplayer"
 	let args = ["-ss", show offset, "-frames", "1", "-vo", "jpeg:outdir=" ++ outDir, vidPath]
 	waitForProcess =<< runProcess cmd args Nothing Nothing Nothing Nothing Nothing
-	renameFile "00000001.jpg" $ show offset ++ ".jpg"
+	withCwd outDir $ renameFile "00000001.jpg" $ show offset ++ ".jpg"
 	takeScreenshots vidPath outDir rest
