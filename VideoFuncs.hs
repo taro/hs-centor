@@ -19,7 +19,7 @@ import System.Process.Run (readProcess)
 	ID_(field)=(value) -- this is returned as a [(String, String)].
 -}
 videoInfo 
-	:: String {-| Path to the video file -} 
+	:: String	-- ^ Path to the video file 
 	-> IO [(String, String)]
 videoInfo vidPath = do
 	let cmd = "mplayer"
@@ -36,9 +36,9 @@ videoInfo vidPath = do
 		mplayer -ss <offset> -frames 1 -vo jpeg:outdir=<outdir> <video>
 -}
 takeScreenshots 
-	:: String {-| Path to the video file -}
-	-> String {-| Path to the output directory -}
-	-> [Int] {-| List of offsets (in seconds) to dump at -}
+	:: String	-- ^ Path to the video file 
+	-> String	-- ^ Path to the output directory 
+	-> [Int]	-- ^ List of offsets (in seconds) to dump at 
 	-> IO ()
 takeScreenshots _ _ [] = return ()
 takeScreenshots vidPath outDir (offset : rest) = do

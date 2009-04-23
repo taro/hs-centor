@@ -7,8 +7,8 @@ import System.IO (FilePath)
 	of another directory without actually having to change cwd
 -}
 withCwd 
-	:: FilePath {-| Path to directory to execute action in -}
-	-> IO a {-| Action to execute in alternate cwd -}
+	:: FilePath		-- ^ Path to directory to execute action in 
+	-> IO a			-- ^ Action to execute in alternate cwd 
 	-> IO a
 withCwd path f = do
 	cwd <- getCurrentDirectory
