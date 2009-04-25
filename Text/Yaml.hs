@@ -1,6 +1,6 @@
 module Text.Yaml where
 import Control.Exception (throw, Exception(ErrorCall))
-import Control.Monad (liftM)
+import Control.Monad (liftM, liftM2)
 import Text.ParserCombinators.Parsec
 import Text.Regex.Posix
 
@@ -23,17 +23,6 @@ decodeYaml s =
 		Left err -> throw $ ErrorCall $ show err
 		Right x -> x
 
-pjoin f p1 p2 = do
-	v1 <- p1
-	v2 <- p2
-	return $ f v1 v2
-
-pbetween o c p = do
-	o
-	v <- p
-	c
-	return v
-
 psymbol p = do
 	skipMany $ char ' '
 	v <- string p
@@ -42,7 +31,7 @@ psymbol p = do
 
 pneg = option "" (string "-")
 
-(<++>) = pjoin (++)
+(<++>) = liftM2 (++)
 
 yvInteger :: Parser YamlValue
 yvInteger = do
@@ -59,7 +48,7 @@ yvString = try quoted <|> try unquoted
 	where
 		quoted = do
 			let dq = (char '"')
-			s <- pbetween dq dq $ many $ noneOf ['"', '\\']
+			s <- between dq dq $ many $ noneOf ['"', '\\']
 			return $ YString s
 		unquoted = liftM YString $ many1 letter
 
@@ -67,7 +56,7 @@ yvList :: Parser YamlValue
 yvList = 
 	liftM YList $ btw $ sepBy yvValue sep
 	where
-		btw = pbetween (psymbol "[") (psymbol "]")
+		btw = between (psymbol "[") (psymbol "]")
 		sep = psymbol ","
 
 yvIdentifier :: Parser String
@@ -89,7 +78,7 @@ yvHash :: Parser YamlValue
 yvHash = do
 	liftM YHash $ btw $ sepBy yvHashItem sep
 	where
-		btw = pbetween (psymbol "{") (psymbol "}")
+		btw = between (psymbol "{") (psymbol "}")
 		sep = psymbol ","
 
 yvObject :: Int -> Parser YamlObject
