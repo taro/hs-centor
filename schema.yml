@@ -1,0 +1,24 @@
+schema:
+	post:
+		author: { type: Reference, references: user }
+		created: Timestamp
+		filename: String
+		datastore: String
+	tag:
+		name: String
+		parent: { type: Reference, references: taxonomy }
+	tagAlias:
+		author: { type: Reference, references: user }
+		created: Timestamp
+		alias: String
+		tagId: { type: Reference, references: tag }
+	postTag:
+		author: { type: Reference, references: user }
+		created: Timestamp
+		tagId: { type: Reference, references: tag }
+		postId: { type: Reference, references: post }
+	comment:
+		author: { type: Reference, references: user }
+		created: Timestamp
+		subject: String
+		body: String
