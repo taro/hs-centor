@@ -1,24 +1,24 @@
 schema:
 	post:
 		author: { type: Reference, references: user }
-		created: Timestamp
-		filename: String
-		datastore: String
+		created: Datetime
+		filename: { type: String, length: 255 }
+		datastore: { type: String, length: 255 }
 	tag:
-		name: String
+		name: { type: String, length: 255 }
 		parent: { type: Reference, references: taxonomy }
 	tagAlias:
 		author: { type: Reference, references: user }
-		created: Timestamp
-		alias: String
+		created: Datetime
+		alias: { type: String, length: 255 }
 		tagId: { type: Reference, references: tag }
 	postTag:
 		author: { type: Reference, references: user }
-		created: Timestamp
+		created: Datetime
 		tagId: { type: Reference, references: tag }
 		postId: { type: Reference, references: post }
 	comment:
 		author: { type: Reference, references: user }
-		created: Timestamp
-		subject: String
-		body: String
+		created: Datetime
+		subject: { type: String, length: 255 }
+		body: Text
