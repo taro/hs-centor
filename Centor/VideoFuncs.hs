@@ -1,4 +1,4 @@
-module VideoFuncs (videoInfo, takeScreenshots) where
+module Centor.VideoFuncs (videoInfo, takeScreenshots) where
 import Control.Concurrent (forkIO)
 import Control.Monad (liftM)
 import Text.Regex.Posix ((=~))
