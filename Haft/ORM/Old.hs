@@ -1,0 +1,245 @@
+module Haft.ORM.Old (
+	ColType (..), 
+	Table, 
+	coerseSql, 
+	dumpSchema,
+	dumpSchemaHs
+	) where
+
+import Control.Arrow (second)
+import Data.Char (toLower, toUpper, isUpper)
+import Data.List (intercalate, unfoldr)
+import Data.Maybe (fromMaybe)
+import qualified Data.Map as Map
+import Database.HDBC (fromSql)
+import Haft.ORM.Base
+import Text.Regex.Posix ((=~))
+
+{-|
+	Helper function used by the generated code to extract a typed value
+	from a Map (String, SqlValue), or use a default if the key doesn't
+	exist.
+-}
+coerseSql d p k sql = maybe d fromSql $ Map.lookup (p ++ k) sql
+
+{-|
+	Converts the ColType into the corresponding SQL type notation.
+-}
+typeSql :: ColType -> String
+typeSql (ColReference _) = "INTEGER"
+typeSql (ColInteger) = "INTEGER"
+typeSql (ColString x) = "VARCHAR(" ++ show x ++ ")"
+typeSql (ColText) = "TEXT"
+typeSql (ColDatetime) = "TIMESTAMP WITHOUT TIME ZONE"
+
+{-|
+	Converts the ColType into the corresponding Haskell type notation.
+-}
+typeHs :: ColType -> String
+typeHs (ColReference x) = "Maybe " ++ capitalize x
+typeHs (ColInteger) = "Integer"
+typeHs (ColString _) = "String"
+typeHs (ColText) = "String"
+typeHs (ColDatetime) = "LocalTime"
+
+{-|
+	Helper function to transform the Haskell names to SQL names. I like to
+	use camelCase in Haskell, but PostgreSQL is case insensitive, so it's kind
+	of ugh. This might help a bit kekeke.
+-}
+columnNameSql :: String -> String -> String
+columnNameSql tableName =
+	intercalate "_" .  map uncapitalize . (tableName :) . (=~ "((^|[A-Z])[a-z]*)") 
+
+{-|
+	Takes the table name and a column and outputs the SQL fragment for
+the CREATE TABLE statement.
+-}
+columnSql :: String -> (String, ColType) -> String
+columnSql tName (colName, colType) = 
+	columnNameSql tName colName ++ " " ++ typeSql colType
+
+{-|
+	Takes the table name and a column and outputs the Haskell fragment
+	for the column's entry in the table record type.
+-}
+columnHs :: String -> (String, ColType) -> String
+columnHs tName (colName, colType) =
+	tName ++ capitalize colName ++ " :: " ++ typeHs colType	
+
+{-|
+	Takes the table and outputs the whole CREATE TABLE statement used
+	to generate the proper schema in SQL.
+-}
+createTableSql :: String -> Table -> String
+createTableSql pfx (tableName, cols) = 
+	unlines [
+		"DROP TABLE IF EXISTS \"" ++ pfx ++ tableName ++ "\";",
+		"CREATE TABLE \"" ++ pfx ++ tableName ++ "\" (\n\t" ++ pkey ++ columns ++ "\n);"
+		]
+		where 
+			pkey = columnNameSql tableName "Id" ++ " INTEGER PRIMARY KEY,\n\t"
+			columns = intercalate ",\n\t" $ map (columnSql $ tableName) cols
+
+{-|
+	Filters out all of the ColReference columns of the table, and returns
+	a [(ColumnName, ReferencedTable)].
+-}
+getReferences :: Table -> [(String, String)]
+getReferences (_, cols) =
+	map formatRef $ filter onlyRefs cols
+		where
+			onlyRefs x = case x of
+				(_, ColReference _) -> True
+				_ -> False
+			formatRef (c, ColReference r) =
+				(c, r)
+
+{-|
+	Creates the SQL to add FOREIGN KEY constraints to all of the columns
+	which have a ColReference type.
+-}
+createRefSql :: String -> Table -> String
+createRefSql pfx t@(tableName, _) = 
+	intercalate "\n" $ map refSql $ getReferences t
+		where refSql (colName, refTable) = "ALTER TABLE \"" ++ pfx ++ tableName ++ "\" ADD FOREIGN KEY (" ++ columnNameSql tableName colName ++ ") REFERENCES \"" ++ pfx ++ refTable ++ "\";"	
+
+{-|
+	Creates the SQL to CREATE SEQUENCE and set that sequence as the default
+	value for the primary key of the table. This only really works for
+	PostgreSQL -- will have to override (somehow lol?) for shit databases.
+-}
+createSeqSql :: String -> Table -> String
+createSeqSql pfx (tableName, _) =
+	let seqName = columnNameSql "seq" (tableName ++ "Id") in
+	unlines [
+		"DROP SEQUENCE IF EXISTS " ++ seqName ++ ";",
+		"CREATE SEQUENCE " ++ seqName ++ ";",
+		"ALTER TABLE \"" ++ pfx ++ tableName ++ "\" ALTER COLUMN " ++ columnNameSql tableName "Id" ++ " SET DEFAULT NEXTVAL('" ++ seqName ++ "');"
+	]
+
+{-|
+	Creates the Haskell code for a DbRecord which exposes all the fields
+	of the supplied table.
+-}
+createRecordHs :: Table -> String
+createRecordHs (tableName, cols) =
+	"data " ++ cTableName ++ " = " ++ cTableName ++ " {\n\t" ++ pkey ++ columns ++ "\n} deriving (Show)"
+		where
+			cTableName = capitalize tableName
+			pkey = tableName ++ "Id :: Integer,\n\t"
+			columns = intercalate ",\n\t" $ map (columnHs tableName) cols
+
+{-|
+	Given a table name and a column, outputs a row of Haskell code to
+	convert a Map (String, SqlValue) into the proper type. Will recursively
+	call parseSql' for ColReferences.
+-}
+parserColumn :: String -> (String, ColType) -> String
+parserColumn tName (colName, colType@(ColReference _)) = 
+	tName ++ capitalize colName ++ " = Nothing :: " ++ typeHs colType  --parseSql' pfx sql"
+parserColumn tName (colName, colType@(ColInteger)) = 
+	tName ++ capitalize colName ++ " = coerseSql 0 pfx \"" ++ columnNameSql tName colName ++ "\" sql :: " ++ typeHs colType
+parserColumn tName (colName, colType@(ColString _)) =
+	tName ++ capitalize colName ++ " = coerseSql \"\" pfx \"" ++ columnNameSql tName colName ++ "\" sql :: " ++ typeHs colType
+parserColumn tName (colName, colType@(ColText)) =
+	tName ++ capitalize colName ++ " = coerseSql \"\" pfx \"" ++ columnNameSql tName colName ++ "\" sql :: " ++ typeHs colType
+parserColumn tName (colName, colType@(ColDatetime)) =
+	tName ++ capitalize colName ++ " = coerseSql (error \"Unable to coerse DateTime\") pfx \"" ++ columnNameSql tName colName ++ "\" sql :: " ++ typeHs colType
+
+{-|
+	Takes the table and returns a Haskell fragment which defines the
+	parseSql' function for record type which corresponds to the table.
+-}
+createParserHs :: Table -> String
+createParserHs (tableName, cols) =
+	let cTableName = capitalize tableName in
+	"instance DbRecord " ++ cTableName ++ " where\n\trecId = " ++ tableName ++ "Id\n\tparseSql' pfx sql = \n\t\tcase Map.lookup (pfx ++ \"" ++ columnNameSql tableName "Id" ++ "\") sql of\n\t\t\tNothing -> Nothing\n\t\t\t_ -> Just $ " ++ cTableName ++ " {\n\t\t\t\t" ++ columns ++ " }\n\t" ++ createAscList "" "show" ++ "\n\t" ++ createAscList "JSON" "showJSON"
+		where 
+			columns = intercalate ",\n\t\t\t\t" $ map (parserColumn tableName) $ ("id", ColInteger) : cols
+			createAscList n enc = "toAscList" ++ n ++ " rec = [\n\t\t" ++ fields enc ++ "]"
+			fields enc = intercalate ",\n\t\t" $ map (encoderField enc) $ ("id", ColInteger) : cols
+			encoderField "show" (col, ColString _) = "(\"" ++ tableName ++ capitalize col ++ "\", " ++ tableName ++ capitalize col ++ " rec)"
+			encoderField "show" (col, ColText) = "(\"" ++ tableName ++ capitalize col ++ "\", " ++ tableName ++ capitalize col ++ " rec)"
+			encoderField "showJSON" (col, ColDatetime) = "(\"" ++ tableName ++ capitalize col ++ "\", showJSON $ show $ " ++ tableName ++ capitalize col ++ " rec)"
+			encoderField enc (col, _) = "(\"" ++ tableName ++ capitalize col ++ "\", " ++ enc ++ " $ " ++ tableName ++ capitalize col ++ " rec)"
+
+{-|
+	Creates encode functions for each record type so all the records
+	can be dumped into a JSON-encoded string.
+-}
+createJsonEncoderHs :: Table -> String
+createJsonEncoderHs (tableName, cols) =
+	let cTableName = capitalize tableName in
+	"instance JSON " ++ cTableName ++ " where\n\tshowJSON = makeObj . toAscListJSON\n\treadJSON = undefined"
+
+{-|
+	Takes a list of tables and returns the complete SQL listing to 
+	produce the schema. (CREATE TABLE and ADD FOREIGN KEY). First
+	argument is a prefix which is appended to all table names.
+-}
+dumpSchema :: String -> [Table] -> String
+dumpSchema pfx tbls = (unlines . map ($ tbls)) [
+	intercalate "\n\n" . map (createTableSql pfx),
+	intercalate "\n" . map (createSeqSql pfx),
+	intercalate "\n" . map (createRefSql pfx)]
+
+{-|
+	Converts a list of tables into a bunch of Haskell record definitions.
+-}
+dumpRecordHs :: [Table] -> String
+dumpRecordHs = intercalate "\n\n" . map createRecordHs
+
+{-|
+	Converts a list of tables into the corresponding parseSql'
+	instances for each of the record types.
+-}
+dumpParserHs :: [Table] -> String
+dumpParserHs = intercalate "\n\n" . map createParserHs
+
+{-|
+	Crafts JSON encoders from a list of tables.
+-}
+dumpJsonEncoderHs :: [Table] -> String
+dumpJsonEncoderHs = intercalate "\n\n" . map createJsonEncoderHs
+
+{-|
+	Converts the list of tables into a complete Haskell source file which
+	defines all the records (and functionality to map those records out
+	of a Map (String, SqlValue)) for the tables.
+
+	First argument is the SiteName, which is used to name the module.
+-}
+dumpSchemaHs :: String -> [Table] -> String
+dumpSchemaHs siteName tbls =
+	intercalate "\n\n" [
+		header,
+		dumpRecordHs tbls,
+		dumpParserHs tbls,
+		dumpJsonEncoderHs tbls
+		] where
+			header = unlines [
+				"module " ++ siteName ++ ".ORM where",
+				"import Data.Time",
+				"import Database.HDBC (SqlValue)",
+				"import qualified Data.Map as Map",
+				"import ORM",
+				"import Text.JSON (JSON(..), JSValue(..), makeObj)",
+				"import Text.StringTemplate (STGroup, toString, setManyAttrib)",
+				"import View (getTemplate)",
+				"",
+				"parseSql :: DbRecord a => Map.Map String SqlValue -> Maybe a",
+				"parseSql = parseSql' \"\"",
+				"",
+				"class DbRecord a where",
+				"\tparseSql' :: String -> Map.Map String SqlValue -> Maybe a",
+				"\ttoAscList :: a -> [(String, String)]",
+				"\ttoAscListJSON :: a -> [(String, JSValue)]",
+				"\trecId :: a -> Integer",
+				"",
+				"xformDbRecord :: (DbRecord a) => STGroup String -> (Integer -> [String]) -> a -> String",
+				"xformDbRecord tpls sugg rec = ",
+				"\tlet suggs = sugg $ recId rec in",
+				"\tlet tpl = getTemplate tpls suggs in",
+				"\ttoString $ setManyAttrib (toAscList rec) tpl"
+				]
