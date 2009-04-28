@@ -1,4 +1,4 @@
 module Centor.Post where
 
-list _ = return "post list"
-view _ = return "post view"
+list db tpls params = return "post list"
+view db tpls params = return "post view"

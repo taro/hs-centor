@@ -1,3 +1,3 @@
 module Centor.Index where
 
-list _ = return "index list"
+list db tpls params = return "index list"
