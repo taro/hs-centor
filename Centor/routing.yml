@@ -1,0 +1,10 @@
+routing:
+	index:
+		url: "/"
+		params: { module: Index, action: list }
+	post_view_1:
+		url: "/post/:post"
+		params: { module: Post, action: view }
+	post_view_2:
+		url: "/post/:post/*"
+		params: { module: Post, action: view }
