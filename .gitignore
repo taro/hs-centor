@@ -1,3 +1,6 @@
 Centor/ORM.hs
 Centor/RoutingTable.hs
 Centor/schema.sql
+*.hi
+*.o
+*.fcgi
