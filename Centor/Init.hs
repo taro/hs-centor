@@ -15,6 +15,5 @@ getActionTable db tplPath = do
 	tpls <- directoryGroup tplPath :: IO (STGroup String)
 	return $ Map.fromList $ map (\(k, f) -> (k, f db tpls)) rawActionTable
 
-
 getUrlTree :: IO UrlTree
 getUrlTree = return urlTree

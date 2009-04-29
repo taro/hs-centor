@@ -5,3 +5,5 @@ Centor/schema.sql
 *.o
 *.fcgi
 *.cgi
+*.swp
+Build
