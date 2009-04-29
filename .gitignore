@@ -4,3 +4,4 @@ Centor/schema.sql
 *.hi
 *.o
 *.fcgi
+*.cgi
