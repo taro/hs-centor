@@ -6,7 +6,7 @@ schema:
 		datastore: { type: String, length: 255 }
 	tag:
 		name: { type: String, length: 255 }
-		parent: { type: Reference, references: taxonomy }
+		parent: { type: Reference, references: tag }
 	tagAlias:
 		author: { type: Reference, references: user }
 		created: Datetime
@@ -22,3 +22,5 @@ schema:
 		created: Datetime
 		subject: { type: String, length: 255 }
 		body: Text
+	user:
+		name: { type: String, length: 255 }
